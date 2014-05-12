@@ -106,6 +106,8 @@ static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVect
     CGPoint previousMidPoint;
     PPSSignaturePoint previousVertex;
     PPSSignaturePoint currentVelocity;
+    
+    NSMutableString *_svgPath;
 }
 
 @end
@@ -140,7 +142,9 @@ static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVect
         
         // Erase with long press
         [self addGestureRecognizer:[[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(longPress:)]];
-
+        
+        _svgPath = [NSMutableString string];
+        
     } else [NSException raise:@"NSOpenGLES2ContextException" format:@"Failed to create OpenGL ES2 context"];
 }
 
@@ -195,7 +199,9 @@ static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVect
     length = 0;
     dotsLength = 0;
     self.hasSignature = NO;
-	
+    
+    _svgPath = [NSMutableString string];
+    
 	[self setNeedsDisplay];
 }
 
@@ -217,6 +223,9 @@ static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVect
     CGPoint l = [t locationInView:self];
     
     if (t.state == UIGestureRecognizerStateRecognized) {
+        
+        [self addSVGPoint:l];
+        
         glBindBuffer(GL_ARRAY_BUFFER, dotsBuffer);
         
         PPSSignaturePoint touchPoint = ViewPointToGL(l, self.bounds, (GLKVector3){1, 1, 1});
@@ -279,6 +288,8 @@ static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVect
     
     if ([p state] == UIGestureRecognizerStateBegan) {
         
+        [self addSVGPoint:l];
+        
         previousPoint = l;
         previousMidPoint = l;
         
@@ -315,20 +326,27 @@ static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVect
                 [self addTriangleStripPointsForPrevious:previousVertex next:v];
                 
                 previousVertex = v;
+                
+                [self addSVGQuadraticBezierTo:l controlPoint:quadPoint];
             }
+            
         } else if (distance > 1.0) {
             
             PPSSignaturePoint v = ViewPointToGL(l, self.bounds, StrokeColor);
             [self addTriangleStripPointsForPrevious:previousVertex next:v];
             
-            previousVertex = v;            
+            previousVertex = v;
             previousThickness = penThickness;
+            
+            [self moveSVGPointTo:l];
         }
         
         previousPoint = l;
         previousMidPoint = mid;
 
     } else if (p.state == UIGestureRecognizerStateEnded | p.state == UIGestureRecognizerStateCancelled) {
+        
+        [self moveSVGPointTo:l];
         
         PPSSignaturePoint v = ViewPointToGL(l, self.bounds, (GLKVector3){1, 1, 1});
         addVertex(&length, v);
@@ -431,6 +449,25 @@ static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVect
     glDeleteVertexArraysOES(1, &vertexArray);
     
     effect = nil;
+}
+
+
+#pragma mark - SVG path
+
+
+- (void)addSVGPoint:(CGPoint)point
+{
+    [_svgPath appendFormat:@"M%g,%g L%g,%g ", point.x, point.y, point.x, point .y];
+}
+
+- (void)addSVGQuadraticBezierTo:(CGPoint)point controlPoint:(CGPoint)controlPoint
+{
+    [_svgPath appendFormat:@"Q%g,%g %g,%g ",point.x,point.y, controlPoint.x, controlPoint.y];
+}
+
+- (void)moveSVGPointTo:(CGPoint)point
+{
+    [_svgPath appendFormat:@"L%g,%g ",point.x,point.y];
 }
 
 @end
